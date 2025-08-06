@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import {
   Edit, 
   Trash2, 
   Package,
-  MoreHorizontal 
+  MoreHorizontal,
+  Loader2
 } from "lucide-react";
 import {
   Table,
@@ -27,61 +28,86 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ProductForm } from "@/components/ProductForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-
-// Mock data - replace with API calls
-const mockProducts = [
-  { id: 1, name: "Premium Service", description: "High-tier service offering with premium features" },
-  { id: 2, name: "Basic Plan", description: "Entry-level plan for new customers" },
-  { id: 3, name: "Enterprise Solution", description: "Comprehensive solution for large organizations" },
-  { id: 4, name: "Starter Package", description: "Perfect for small businesses getting started" },
-];
+import { productsService, Product } from "@/services/productsService";
 
 const Products = () => {
-  const [products, setProducts] = useState(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [deleteProduct, setDeleteProduct] = useState(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Load products on component mount
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await productsService.getProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleEdit = (product) => {
+  const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setShowForm(true);
   };
 
-  const handleDelete = (product) => {
+  const handleDelete = (product: Product) => {
     setDeleteProduct(product);
   };
 
-  const confirmDelete = () => {
-    if (deleteProduct) {
-      setProducts(products.filter(p => p.id !== deleteProduct.id));
-      setDeleteProduct(null);
+  const confirmDelete = async () => {
+    if (deleteProduct && !actionLoading) {
+      try {
+        setActionLoading(true);
+        await productsService.deleteProduct(deleteProduct.id);
+        setProducts(products.filter(p => p.id !== deleteProduct.id));
+        setDeleteProduct(null);
+      } catch (error) {
+        console.error('Failed to delete product:', error);
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
-  const handleSave = (productData) => {
-    if (editingProduct) {
-      // Update existing product
-      setProducts(products.map(p => 
-        p.id === editingProduct.id 
-          ? { ...p, ...productData }
-          : p
-      ));
-    } else {
-      // Add new product
-      const newProduct = {
-        id: Math.max(...products.map(p => p.id)) + 1,
-        ...productData
-      };
-      setProducts([...products, newProduct]);
+  const handleSave = async (productData: any) => {
+    if (actionLoading) return;
+    
+    try {
+      setActionLoading(true);
+      if (editingProduct) {
+        // Update existing product
+        const updatedProduct = await productsService.updateProduct(editingProduct.id, productData);
+        setProducts(products.map(p => 
+          p.id === editingProduct.id ? updatedProduct : p
+        ));
+      } else {
+        // Add new product
+        const newProduct = await productsService.createProduct(productData);
+        setProducts([...products, newProduct]);
+      }
+      setShowForm(false);
+      setEditingProduct(null);
+    } catch (error) {
+      console.error('Failed to save product:', error);
+    } finally {
+      setActionLoading(false);
     }
-    setShowForm(false);
-    setEditingProduct(null);
   };
 
   return (

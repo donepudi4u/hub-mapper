@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,8 @@ import {
   Edit, 
   Trash2, 
   Users,
-  MoreHorizontal 
+  MoreHorizontal,
+  Loader2
 } from "lucide-react";
 import {
   Table,
@@ -28,41 +29,33 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PartnerForm } from "@/components/PartnerForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-
-// Mock data - replace with API calls
-const mockPartners = [
-  { 
-    id: 1, 
-    merchant_number: "MER001", 
-    name: "TechCorp Solutions", 
-    partner_id: "TECH001", 
-    client_id: "CLIENT_TECH_001", 
-    status: "active" 
-  },
-  { 
-    id: 2, 
-    merchant_number: "MER002", 
-    name: "Digital Innovations", 
-    partner_id: "DIGI001", 
-    client_id: "CLIENT_DIGI_001", 
-    status: "active" 
-  },
-  { 
-    id: 3, 
-    merchant_number: "MER003", 
-    name: "Global Systems", 
-    partner_id: "GLOB001", 
-    client_id: "CLIENT_GLOB_001", 
-    status: "inactive" 
-  },
-];
+import { partnersService, Partner } from "@/services/partnersService";
 
 const Partners = () => {
-  const [partners, setPartners] = useState(mockPartners);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [editingPartner, setEditingPartner] = useState(null);
-  const [deletePartner, setDeletePartner] = useState(null);
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+  const [deletePartner, setDeletePartner] = useState<Partner | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Load partners on component mount
+  useEffect(() => {
+    fetchPartners();
+  }, []);
+
+  const fetchPartners = async () => {
+    try {
+      setLoading(true);
+      const data = await partnersService.getPartners();
+      setPartners(data);
+    } catch (error) {
+      console.error('Failed to fetch partners:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredPartners = partners.filter(partner =>
     partner.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -70,48 +63,71 @@ const Partners = () => {
     partner.partner_id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleEdit = (partner) => {
+  const handleEdit = (partner: Partner) => {
     setEditingPartner(partner);
     setShowForm(true);
   };
 
-  const handleDelete = (partner) => {
+  const handleDelete = (partner: Partner) => {
     setDeletePartner(partner);
   };
 
-  const confirmDelete = () => {
-    if (deletePartner) {
-      setPartners(partners.filter(p => p.id !== deletePartner.id));
-      setDeletePartner(null);
+  const confirmDelete = async () => {
+    if (deletePartner && !actionLoading) {
+      try {
+        setActionLoading(true);
+        await partnersService.deletePartner(deletePartner.id);
+        setPartners(partners.filter(p => p.id !== deletePartner.id));
+        setDeletePartner(null);
+      } catch (error) {
+        console.error('Failed to delete partner:', error);
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
-  const handleSave = (partnerData) => {
-    if (editingPartner) {
-      // Update existing partner
+  const handleSave = async (partnerData: any) => {
+    if (actionLoading) return;
+    
+    try {
+      setActionLoading(true);
+      if (editingPartner) {
+        // Update existing partner
+        const updatedPartner = await partnersService.updatePartner(editingPartner.id, partnerData);
+        setPartners(partners.map(p => 
+          p.id === editingPartner.id ? updatedPartner : p
+        ));
+      } else {
+        // Add new partner
+        const newPartner = await partnersService.createPartner(partnerData);
+        setPartners([...partners, newPartner]);
+      }
+      setShowForm(false);
+      setEditingPartner(null);
+    } catch (error) {
+      console.error('Failed to save partner:', error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const toggleStatus = async (partnerId: number) => {
+    const partner = partners.find(p => p.id === partnerId);
+    if (!partner || actionLoading) return;
+
+    const newStatus = partner.status === 'Active' ? 'Inactive' : 'Active';
+    try {
+      setActionLoading(true);
+      const updatedPartner = await partnersService.updatePartnerStatus(partnerId, newStatus);
       setPartners(partners.map(p => 
-        p.id === editingPartner.id 
-          ? { ...p, ...partnerData }
-          : p
+        p.id === partnerId ? updatedPartner : p
       ));
-    } else {
-      // Add new partner
-      const newPartner = {
-        id: Math.max(...partners.map(p => p.id)) + 1,
-        ...partnerData
-      };
-      setPartners([...partners, newPartner]);
+    } catch (error) {
+      console.error('Failed to update partner status:', error);
+    } finally {
+      setActionLoading(false);
     }
-    setShowForm(false);
-    setEditingPartner(null);
-  };
-
-  const toggleStatus = (partnerId) => {
-    setPartners(partners.map(p => 
-      p.id === partnerId 
-        ? { ...p, status: p.status === 'active' ? 'inactive' : 'active' }
-        : p
-    ));
   };
 
   return (
@@ -183,10 +199,11 @@ const Partners = () => {
                   <TableCell>
                     <div className="flex items-center space-x-2">
                       <Switch 
-                        checked={partner.status === 'active'}
+                        checked={partner.status === 'Active'}
                         onCheckedChange={() => toggleStatus(partner.id)}
+                        disabled={actionLoading}
                       />
-                      <Badge variant={partner.status === 'active' ? 'default' : 'secondary'}>
+                      <Badge variant={partner.status === 'Active' ? 'default' : 'secondary'}>
                         {partner.status}
                       </Badge>
                     </div>

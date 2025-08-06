@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import {
   Search, 
   Zap,
   Trash2,
-  MoreHorizontal 
+  MoreHorizontal,
+  Loader2
 } from "lucide-react";
 import {
   Table,
@@ -27,77 +28,105 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-
-// Mock data - replace with API calls
-const mockSubscriptions = [
-  { 
-    id: 1, 
-    product_event_id: 1, 
-    status: "active",
-    partner_name: "TechCorp Solutions",
-    product_name: "Premium Service",
-    event_name: "Product Launch"
-  },
-  { 
-    id: 2, 
-    product_event_id: 2, 
-    status: "active",
-    partner_name: "TechCorp Solutions",
-    product_name: "Premium Service",
-    event_name: "User Training"
-  },
-  { 
-    id: 3, 
-    product_event_id: 3, 
-    status: "inactive",
-    partner_name: "Digital Innovations",
-    product_name: "Basic Plan",
-    event_name: "Product Launch"
-  },
-];
+import { subscriptionsService, Subscription } from "@/services/subscriptionsService";
 
 const Subscriptions = () => {
-  const [subscriptions, setSubscriptions] = useState(mockSubscriptions);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [deleteSubscription, setDeleteSubscription] = useState(null);
+  const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
+  const [deleteSubscription, setDeleteSubscription] = useState<Subscription | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const filteredSubscriptions = subscriptions.filter(subscription =>
-    subscription.partner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    subscription.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    subscription.event_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Load subscriptions on component mount
+  useEffect(() => {
+    fetchSubscriptions();
+  }, []);
 
-  const handleDelete = (subscription) => {
-    setDeleteSubscription(subscription);
-  };
-
-  const confirmDelete = () => {
-    if (deleteSubscription) {
-      setSubscriptions(subscriptions.filter(s => s.id !== deleteSubscription.id));
-      setDeleteSubscription(null);
+  const fetchSubscriptions = async () => {
+    try {
+      setLoading(true);
+      const data = await subscriptionsService.getSubscriptions();
+      setSubscriptions(data);
+    } catch (error) {
+      console.error('Failed to fetch subscriptions:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSave = (subscriptionData) => {
-    const newSubscription = {
-      id: Math.max(...subscriptions.map(s => s.id)) + 1,
-      ...subscriptionData,
-      // These would come from API lookups in real implementation
-      partner_name: "Partner Name",
-      product_name: "Product Name",
-      event_name: "Event Name"
-    };
-    setSubscriptions([...subscriptions, newSubscription]);
-    setShowForm(false);
+  const filteredSubscriptions = subscriptions.filter(subscription =>
+    subscription.partner?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    subscription.product_event?.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    subscription.product_event?.event?.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleEdit = (subscription: Subscription) => {
+    setEditingSubscription(subscription);
+    setShowForm(true);
   };
 
-  const toggleStatus = (subscriptionId) => {
-    setSubscriptions(subscriptions.map(s => 
-      s.id === subscriptionId 
-        ? { ...s, status: s.status === 'active' ? 'inactive' : 'active' }
-        : s
-    ));
+  const handleDelete = (subscription: Subscription) => {
+    setDeleteSubscription(subscription);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteSubscription && !actionLoading) {
+      try {
+        setActionLoading(true);
+        await subscriptionsService.deleteSubscription(deleteSubscription.id);
+        setSubscriptions(subscriptions.filter(s => s.id !== deleteSubscription.id));
+        setDeleteSubscription(null);
+      } catch (error) {
+        console.error('Failed to delete subscription:', error);
+      } finally {
+        setActionLoading(false);
+      }
+    }
+  };
+
+  const handleSave = async (subscriptionData: any) => {
+    if (actionLoading) return;
+    
+    try {
+      setActionLoading(true);
+      if (editingSubscription) {
+        // Update existing subscription
+        const updatedSubscription = await subscriptionsService.updateSubscription(editingSubscription.id, subscriptionData);
+        setSubscriptions(subscriptions.map(s => 
+          s.id === editingSubscription.id ? updatedSubscription : s
+        ));
+      } else {
+        // Add new subscription
+        const newSubscription = await subscriptionsService.createSubscription(subscriptionData);
+        setSubscriptions([...subscriptions, newSubscription]);
+      }
+      setShowForm(false);
+      setEditingSubscription(null);
+    } catch (error) {
+      console.error('Failed to save subscription:', error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const toggleStatus = async (subscriptionId: number) => {
+    const subscription = subscriptions.find(s => s.id === subscriptionId);
+    if (!subscription || actionLoading) return;
+
+    const newStatus = subscription.status === 'Active' ? 'Inactive' : 'Active';
+    try {
+      setActionLoading(true);
+      const updatedSubscription = await subscriptionsService.updateSubscriptionStatus(subscriptionId, newStatus);
+      setSubscriptions(subscriptions.map(s => 
+        s.id === subscriptionId ? updatedSubscription : s
+      ));
+    } catch (error) {
+      console.error('Failed to update subscription status:', error);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   return (
@@ -111,10 +140,18 @@ const Subscriptions = () => {
           </p>
         </div>
         <Button 
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            setEditingSubscription(null);
+            setShowForm(true);
+          }}
           className="bg-gradient-primary hover:opacity-90"
+          disabled={actionLoading}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          {actionLoading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="mr-2 h-4 w-4" />
+          )}
           Add Subscription
         </Button>
       </div>
@@ -145,55 +182,73 @@ const Subscriptions = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Partner</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSubscriptions.map((subscription) => (
-                <TableRow key={subscription.id}>
-                  <TableCell className="font-medium">{subscription.partner_name}</TableCell>
-                  <TableCell>{subscription.product_name}</TableCell>
-                  <TableCell>{subscription.event_name}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Switch 
-                        checked={subscription.status === 'active'}
-                        onCheckedChange={() => toggleStatus(subscription.id)}
-                      />
-                      <Badge variant={subscription.status === 'active' ? 'default' : 'secondary'}>
-                        {subscription.status}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(subscription)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading subscriptions...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Partner</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredSubscriptions.map((subscription) => (
+                  <TableRow key={subscription.id}>
+                    <TableCell className="font-medium">
+                      {subscription.partner?.name || `Partner ${subscription.partner_id}`}
+                    </TableCell>
+                    <TableCell>
+                      {subscription.product_event?.product?.name || 'Unknown Product'}
+                    </TableCell>
+                    <TableCell>
+                      {subscription.product_event?.event?.name || 'Unknown Event'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Switch 
+                          checked={subscription.status === 'Active'}
+                          onCheckedChange={() => toggleStatus(subscription.id)}
+                          disabled={actionLoading}
+                        />
+                        <Badge variant={subscription.status === 'Active' ? 'default' : 'secondary'}>
+                          {subscription.status}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit(subscription)}>
+                            <Zap className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(subscription)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
