@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import {
   Edit, 
   Trash2, 
   Calendar,
-  MoreHorizontal 
+  MoreHorizontal,
+  Loader2
 } from "lucide-react";
 import {
   Table,
@@ -27,61 +28,86 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EventForm } from "@/components/EventForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-
-// Mock data - replace with API calls
-const mockEvents = [
-  { id: 1, name: "Product Launch", description: "Official product launch event" },
-  { id: 2, name: "User Training", description: "Training session for new users" },
-  { id: 3, name: "Maintenance Window", description: "Scheduled system maintenance" },
-  { id: 4, name: "Feature Update", description: "Rollout of new features" },
-];
+import { eventsService, Event } from "@/services/eventsService";
 
 const Events = () => {
-  const [events, setEvents] = useState(mockEvents);
+  const [events, setEvents] = useState<Event[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null);
-  const [deleteEvent, setDeleteEvent] = useState(null);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [deleteEvent, setDeleteEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Load events on component mount
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const data = await eventsService.getEvents();
+      setEvents(data);
+    } catch (error) {
+      console.error('Failed to fetch events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredEvents = events.filter(event =>
     event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     event.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleEdit = (event) => {
+  const handleEdit = (event: Event) => {
     setEditingEvent(event);
     setShowForm(true);
   };
 
-  const handleDelete = (event) => {
+  const handleDelete = (event: Event) => {
     setDeleteEvent(event);
   };
 
-  const confirmDelete = () => {
-    if (deleteEvent) {
-      setEvents(events.filter(e => e.id !== deleteEvent.id));
-      setDeleteEvent(null);
+  const confirmDelete = async () => {
+    if (deleteEvent && !actionLoading) {
+      try {
+        setActionLoading(true);
+        await eventsService.deleteEvent(deleteEvent.id);
+        setEvents(events.filter(e => e.id !== deleteEvent.id));
+        setDeleteEvent(null);
+      } catch (error) {
+        console.error('Failed to delete event:', error);
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
-  const handleSave = (eventData) => {
-    if (editingEvent) {
-      // Update existing event
-      setEvents(events.map(e => 
-        e.id === editingEvent.id 
-          ? { ...e, ...eventData }
-          : e
-      ));
-    } else {
-      // Add new event
-      const newEvent = {
-        id: Math.max(...events.map(e => e.id)) + 1,
-        ...eventData
-      };
-      setEvents([...events, newEvent]);
+  const handleSave = async (eventData: any) => {
+    if (actionLoading) return;
+    
+    try {
+      setActionLoading(true);
+      if (editingEvent) {
+        // Update existing event
+        const updatedEvent = await eventsService.updateEvent(editingEvent.id, eventData);
+        setEvents(events.map(e => 
+          e.id === editingEvent.id ? updatedEvent : e
+        ));
+      } else {
+        // Add new event
+        const newEvent = await eventsService.createEvent(eventData);
+        setEvents([...events, newEvent]);
+      }
+      setShowForm(false);
+      setEditingEvent(null);
+    } catch (error) {
+      console.error('Failed to save event:', error);
+    } finally {
+      setActionLoading(false);
     }
-    setShowForm(false);
-    setEditingEvent(null);
   };
 
   return (
@@ -100,8 +126,13 @@ const Events = () => {
             setShowForm(true);
           }}
           className="bg-gradient-primary hover:opacity-90"
+          disabled={actionLoading}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          {actionLoading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="mr-2 h-4 w-4" />
+          )}
           Add Event
         </Button>
       </div>
@@ -132,16 +163,22 @@ const Events = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEvents.map((event) => (
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading events...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEvents.map((event) => (
                 <TableRow key={event.id}>
                   <TableCell className="font-medium">{event.name}</TableCell>
                   <TableCell className="max-w-md">
@@ -172,9 +209,10 @@ const Events = () => {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
