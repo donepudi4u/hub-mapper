@@ -26,6 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { SubscriptionForm } from "@/components/SubscriptionForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { subscriptionsService, Subscription } from "@/services/subscriptionsService";
@@ -38,6 +46,10 @@ const Subscriptions = () => {
   const [deleteSubscription, setDeleteSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<'partner_name' | 'product_name' | 'event_name' | 'status'>('partner_name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const itemsPerPage = 10;
 
   // Load subscriptions on component mount
   useEffect(() => {

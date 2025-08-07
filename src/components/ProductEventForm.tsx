@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -28,6 +28,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { productsService, Product } from "@/services/productsService";
+import { eventsService, Event } from "@/services/eventsService";
+import { Loader2 } from "lucide-react";
 
 const productEventSchema = z.object({
   product_id: z.string().min(1, "Product is required"),
@@ -43,21 +46,39 @@ interface ProductEventFormProps {
   onSave: (data: any) => void;
 }
 
-// Mock data - replace with API calls
-const mockProducts = [
-  { id: "1", name: "Premium Service" },
-  { id: "2", name: "Basic Plan" },
-  { id: "3", name: "Enterprise Solution" },
-];
-
-const mockEvents = [
-  { id: "1", name: "Product Launch" },
-  { id: "2", name: "User Training" },
-  { id: "3", name: "Maintenance Window" },
-];
-
 export const ProductEventForm = ({ open, onOpenChange, onSave }: ProductEventFormProps) => {
   const { toast } = useToast();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load products and events on component mount
+  useEffect(() => {
+    if (open) {
+      fetchData();
+    }
+  }, [open]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [productsData, eventsData] = await Promise.all([
+        productsService.getProducts(),
+        eventsService.getEvents()
+      ]);
+      setProducts(productsData);
+      setEvents(eventsData);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load products and events",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
   const form = useForm<ProductEventFormData>({
     resolver: zodResolver(productEventSchema),
     defaultValues: {
@@ -103,13 +124,20 @@ export const ProductEventForm = ({ open, onOpenChange, onSave }: ProductEventFor
                         <SelectValue placeholder="Select a product" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
-                      {mockProducts.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                     <SelectContent>
+                       {loading ? (
+                         <div className="flex items-center justify-center p-2">
+                           <Loader2 className="h-4 w-4 animate-spin" />
+                           <span className="ml-2">Loading...</span>
+                         </div>
+                       ) : (
+                         products.map((product) => (
+                           <SelectItem key={product.id} value={product.id.toString()}>
+                             {product.name}
+                           </SelectItem>
+                         ))
+                       )}
+                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
@@ -127,13 +155,20 @@ export const ProductEventForm = ({ open, onOpenChange, onSave }: ProductEventFor
                         <SelectValue placeholder="Select an event" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
-                      {mockEvents.map((event) => (
-                        <SelectItem key={event.id} value={event.id}>
-                          {event.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                     <SelectContent>
+                       {loading ? (
+                         <div className="flex items-center justify-center p-2">
+                           <Loader2 className="h-4 w-4 animate-spin" />
+                           <span className="ml-2">Loading...</span>
+                         </div>
+                       ) : (
+                         events.map((event) => (
+                           <SelectItem key={event.id} value={event.id.toString()}>
+                             {event.name}
+                           </SelectItem>
+                         ))
+                       )}
+                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>

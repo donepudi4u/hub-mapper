@@ -27,6 +27,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { ProductEventForm } from "@/components/ProductEventForm";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { productEventsService, ProductEvent } from "@/services/productEventsService";
@@ -39,6 +47,10 @@ const ProductEvents = () => {
   const [deleteProductEvent, setDeleteProductEvent] = useState<ProductEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<'product_name' | 'event_name' | 'order'>('order');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const itemsPerPage = 10;
 
   // Load product events on component mount
   useEffect(() => {
