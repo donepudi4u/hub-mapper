@@ -115,7 +115,7 @@ const Subscriptions = () => {
     const subscription = subscriptions.find(s => s.id === subscriptionId);
     if (!subscription || actionLoading) return;
 
-    const newStatus = subscription.status === 'Active' ? 'Inactive' : 'Active';
+    const newStatus = subscription.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
       setActionLoading(true);
       const updatedSubscription = await subscriptionsService.updateSubscriptionStatus(subscriptionId, newStatus);
@@ -213,11 +213,11 @@ const Subscriptions = () => {
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <Switch 
-                          checked={subscription.status === 'Active'}
+                          checked={subscription.status === 'ACTIVE'}
                           onCheckedChange={() => toggleStatus(subscription.id)}
                           disabled={actionLoading}
                         />
-                        <Badge variant={subscription.status === 'Active' ? 'default' : 'secondary'}>
+                        <Badge variant={subscription.status === 'ACTIVE' ? 'default' : 'secondary'}>
                           {subscription.status}
                         </Badge>
                       </div>

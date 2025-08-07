@@ -5,7 +5,7 @@ export interface Subscription {
   id: number;
   product_event_id: number;
   partner_id: number;
-  status: 'Active' | 'Inactive';
+  status: 'ACTIVE' | 'INACTIVE';
   partner?: {
     id: number;
     name: string;
@@ -27,7 +27,7 @@ export interface Subscription {
 export interface SubscriptionFormData {
   product_event_id: number;
   partner_id: number;
-  status: 'Active' | 'Inactive';
+  status: 'ACTIVE' | 'INACTIVE';
 }
 
 export const subscriptionsService = {
@@ -139,7 +139,7 @@ export const subscriptionsService = {
   },
 
   // Update subscription status
-  async updateSubscriptionStatus(id: number, status: 'Active' | 'Inactive'): Promise<Subscription> {
+  async updateSubscriptionStatus(id: number, status: 'ACTIVE' | 'INACTIVE'): Promise<Subscription> {
     try {
       const response = await api.patch(`/subscriptions/${id}/status`, { status });
       toast({
